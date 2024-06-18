@@ -2523,6 +2523,10 @@ class Router(BaseRouter):
 
         return register_exception_handler
 
+    @property
+    def path_parameters(self) -> Optional[Dict[str, str]]:
+        return self.context.get("_route_args", None)
+
 
 class APIGatewayRestResolver(ApiGatewayResolver):
     current_event: APIGatewayProxyEvent
