@@ -3,12 +3,13 @@ import pytest
 from aws_lambda_powertools.event_handler import (
     ALBResolver,
     APIGatewayHttpResolver,
-    APIGatewayRestResolver,
     ApiGatewayResolver,
+    APIGatewayRestResolver,
     LambdaFunctionUrlResolver,
     Response,
 )
 from aws_lambda_powertools.event_handler.middlewares import NextMiddleware
+from aws_lambda_powertools.event_handler.openapi.params import Path
 from aws_lambda_powertools.event_handler.router import (
     ALBRouter,
     APIGatewayHttpRouter,
@@ -22,6 +23,7 @@ from aws_lambda_powertools.utilities.data_classes import (
     APIGatewayProxyEventV2,
     LambdaFunctionUrlEvent,
 )
+from aws_lambda_powertools.shared.types import Annotated
 from tests.functional.utils import load_event
 
 
@@ -84,7 +86,7 @@ def test_lambda_function_url_router_event_type():
 @pytest.mark.parametrize("router,resolver,event_file", [
     (ALBRouter, ALBResolver, "albEvent.json"),
     (APIGatewayRouter, APIGatewayRestResolver, "apiGatewayProxyEvent.json"),
-    (APIGatewayHttpRouter, APIGatewayHttpResolver, "apiGatewayProxyV2Event.json"),
+    (APIGatewayHttpRouter, APIGatewayHttpResolver, "apiGatewayProxyV2Event_GET.json"),
     (LambdaFunctionUrlRouter, LambdaFunctionUrlResolver, "lambdaFunctionUrlEvent.json"),
 ])
 def test_path_parameters_in_context(
@@ -92,21 +94,23 @@ def test_path_parameters_in_context(
     resolver: ApiGatewayResolver,
     event_file: str,
 ) -> None:
-    app = resolver()
+    app = resolver(enable_validation=True)
     router = router()
-    param_key, param_value = "key", "value"
+    path_params = {
+        "str_param": "str_value",
+        "int_param": 3,
+    }
 
-    def bar(app: APIGatewayRestResolver, next_middleware: NextMiddleware) -> Response:
-        assert app.context.path_parameters == {param_key: param_value}
+    def bar(app: APIGatewayRestResolver, next_middleware: NextMiddleware) -> Response[str]:
+        assert app.context.path_parameters == path_params
         return next_middleware(app)
 
-    @router.route(rule="/<key>", method=["GET"], middlewares=[bar])
-    def foo(key: str) -> Response:
-        assert key == param_value
+    @router.route(rule="/<str_param>/<int_param>", method=["GET"], middlewares=[bar])
+    def foo(str_param: Annotated[str, Path()], int_param: Annotated[int, Path()]) -> Response[str]:
         return Response(status_code=200, body="routed")
 
     app.include_router(router)
     event = load_event(event_file)
-    event["path"] = "/" + param_value
+    event["path"] = event["rawPath"] = f"/{path_params['str_param']}/{path_params['int_param']}"
     result = app(event, {})
     assert result["body"] == "routed"
