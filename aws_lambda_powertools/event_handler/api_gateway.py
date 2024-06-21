@@ -423,7 +423,7 @@ class Route:
             print("=================")
 
         # Add Route Arguments to app context
-        app.append_context(_route_args=route_arguments)
+        app.context["_route_args"] = route_arguments
 
         # Call the Middleware Wrapped _call_stack function handler with the app
         return self._middleware_stack(app)
@@ -898,10 +898,17 @@ class ResponseBuilder(Generic[ResponseEventT]):
         }
 
 
+class RouterContext(dict):
+    @property
+    def path_parameters(self) -> Dict[str, Any]:
+        """Get path parameters for the current request."""
+        return self.get("_route_args", {})
+
+
 class BaseRouter(ABC):
     current_event: BaseProxyEvent
     lambda_context: LambdaContext
-    context: dict
+    context: RouterContext
     _router_middlewares: List[Callable] = []
     processed_stack_frames: List[str] = []
 
@@ -1317,6 +1324,11 @@ class BaseRouter(ABC):
 
     def append_context(self, **additional_context):
         """Append key=value data as routing context"""
+        if "_route_args" in additional_context:
+            warnings.warn(
+                "The '_route_args' context key is used internally by powertools and should not be overwritten",
+                stacklevel=2,
+            )
         self.context.update(**additional_context)
 
     def clear_context(self):
@@ -1421,7 +1433,7 @@ def _registered_api_adapter(
         The API Response Object
 
     """
-    route_args: Dict = app.context.get("_route_args", {})
+    route_args: Dict = app.context.path_parameters
     logger.debug(f"Calling API Route Handler: {route_args}")
     return app._to_response(next_middleware(**route_args))
 
@@ -1494,7 +1506,7 @@ class ApiGatewayResolver(BaseRouter):
         self._debug = self._has_debug(debug)
         self._enable_validation = enable_validation
         self._strip_prefixes = strip_prefixes
-        self.context: Dict = {}  # early init as customers might add context before event resolution
+        self.context = RouterContext()  # early init as customers might add context before event resolution
         self.processed_stack_frames = []
         self._response_builder_class = ResponseBuilder[BaseProxyEvent]
 
@@ -2453,7 +2465,7 @@ class Router(BaseRouter):
         self._routes: Dict[tuple, Callable] = {}
         self._routes_with_middleware: Dict[tuple, List[Callable]] = {}
         self.api_resolver: Optional[BaseRouter] = None
-        self.context = {}  # early init as customers might add context before event resolution
+        self.context = RouterContext()  # early init as customers might add context before event resolution
         self._exception_handlers: Dict[Type, Callable] = {}
 
     def route(
