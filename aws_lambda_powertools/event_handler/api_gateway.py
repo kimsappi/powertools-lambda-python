@@ -898,10 +898,17 @@ class ResponseBuilder(Generic[ResponseEventT]):
         }
 
 
+class RouterContext(dict):
+    @property
+    def path_parameters(self) -> Optional[Dict[str, str]]:
+        """Get path parameters."""
+        return self.get("_route_args", None)
+
+
 class BaseRouter(ABC):
     current_event: BaseProxyEvent
     lambda_context: LambdaContext
-    context: dict
+    context: RouterContext
     _router_middlewares: List[Callable] = []
     processed_stack_frames: List[str] = []
 
@@ -1323,6 +1330,11 @@ class BaseRouter(ABC):
         """Resets routing context"""
         self.context.clear()
 
+    @property
+    def path_parameters(self) -> Optional[Dict[str, str]]:
+        """Get path parameters."""
+        return self.context.get("_route_args", None)
+
 
 class MiddlewareFrame:
     """
@@ -1494,7 +1506,7 @@ class ApiGatewayResolver(BaseRouter):
         self._debug = self._has_debug(debug)
         self._enable_validation = enable_validation
         self._strip_prefixes = strip_prefixes
-        self.context: Dict = {}  # early init as customers might add context before event resolution
+        self.context = RouterContext()  # early init as customers might add context before event resolution
         self.processed_stack_frames = []
         self._response_builder_class = ResponseBuilder[BaseProxyEvent]
 
@@ -2453,7 +2465,7 @@ class Router(BaseRouter):
         self._routes: Dict[tuple, Callable] = {}
         self._routes_with_middleware: Dict[tuple, List[Callable]] = {}
         self.api_resolver: Optional[BaseRouter] = None
-        self.context = {}  # early init as customers might add context before event resolution
+        self.context = RouterContext()  # early init as customers might add context before event resolution
         self._exception_handlers: Dict[Type, Callable] = {}
 
     def route(
@@ -2522,10 +2534,6 @@ class Router(BaseRouter):
             return func
 
         return register_exception_handler
-
-    @property
-    def path_parameters(self) -> Optional[Dict[str, str]]:
-        return self.context.get("_route_args", None)
 
 
 class APIGatewayRestResolver(ApiGatewayResolver):

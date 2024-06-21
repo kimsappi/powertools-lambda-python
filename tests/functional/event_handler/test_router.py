@@ -97,7 +97,6 @@ def test_path_parameters_in_context(
     param_key, param_value = "key", "value"
 
     def bar(app: APIGatewayRestResolver, next_middleware: NextMiddleware) -> Response:
-        raise Exception(app.current_event)
         assert app.context.path_parameters == {param_key: param_value}
         return next_middleware(app)
 
